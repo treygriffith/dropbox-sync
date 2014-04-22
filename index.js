@@ -63,7 +63,7 @@ DropboxSync.prototype.sync = function (onError, onChange) {
     if(err) return onError(err);
 
     // trigger the onChange
-    onChange(changesMade.map(function (change) {
+    onChange(changesMade.changes.map(function (change) {
       return self.toLocalPath(change.path);
     }));
 
