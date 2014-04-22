@@ -13,9 +13,10 @@ module.exports = DropboxSync;
  * @param dropboxConfig {String} secret Dropbox API secret
  * @param dropboxConfig {String} uid User's Dropbox UID
  * @param dropboxConfig {String} token User's OAuth Access token
- * @param {String} path Local path for the user's dropbox
+ * @param {String} root Local path for the user's dropbox
+ * @param {String} path Folder within dropbox to monitor
  */
-function DropboxSync(dropboxConfig, path) {
+function DropboxSync(dropboxConfig, root, path) {
   this.client = new Dropbox.Client({
     key: dropboxConfig.key,
     secret: dropboxConfig.secret,
@@ -23,9 +24,12 @@ function DropboxSync(dropboxConfig, path) {
     token: dropboxConfig.token
   });
 
-  this.root = path;
+  this.root = root;
+  this.path = path;
 
   this.cursor = null;
+
+  this.watchingForChanges = null;
 }
 
 // convenience method
@@ -39,24 +43,23 @@ function DropboxSync(dropboxConfig, path) {
  * @return {DropboxSync}          The DropboxSync instance generated
  */
 DropboxSync.sync = function (options, localPath, syncPath, onError, onChange) {
-  var dbfs = new DropboxSync(options);
+  var dbfs = new DropboxSync(options, localPath, syncPath);
 
-  dbfs.sync(path, onError, onChange);
+  dbfs.sync(onError, onChange);
 
   return dbfs;
 };
 
 /**
  * Sync a specific folder to the local path
- * @param  {String} path     Dropbox folder to sync
  * @param  {function(error)} onError  Evaluated when an error occurs. If triggered, this instance will not continue to sync.
  * @param  {function(Array)} onChange Evaluated every time a change occurs in the dropbox with an array of the modified paths.
  * @return {DropboxSync}
  */
-DropboxSync.prototype.sync = function (path, onError, onChange) {
+DropboxSync.prototype.sync = function (onError, onChange) {
   var self = this;
 
-  this.watchForChanges(path, function (err, changesMade) {
+  this.watchForChanges(function (err, changesMade) {
     if(err) return onError(err);
 
     // trigger the onChange
@@ -71,31 +74,47 @@ DropboxSync.prototype.sync = function (path, onError, onChange) {
   return this;
 };
 
+DropboxSync.prototype.stopSync = function (callback) {
+
+  // abort the outstanding XHR
+  this.watchingForChanges.abort();
+
+  // change the flag
+  this.watchingForChanges = null;
+
+  // reset our local state
+  fs.remove(this.root, callback);
+};
+
 /**
  * Watch for changes in a Dropbox folder, and commit them when they occur
- * @param  {String}   path     Dropbox folder to watch for changes in
  * @param  {Function} callback Evaluated with (err, changesMade) when a change occurs
  * @return {DropboxSync}
  */
-DropboxSync.prototype.watchForChanges = function (path, callback) {
+DropboxSync.prototype.watchForChanges = function (callback) {
   var self = this;
 
   if(!this.cursor) {
     return this.pullChanges(path, callback);
   }
 
-  this.client.pollForChanges(this.cursor, function (err, pollResult) {
+  if(this.watchingForChanges) return this;
+
+  this.watchingForChanges = this.client.pollForChanges(this.cursor, function (err, pollResult) {
     if(err) return callback(err);
+
+    // no longer polling, don't do anything else
+    if(!this.watchingForChanges) return;
 
     if(!pollResult.hasChanges) {
 
       // if there are no changes, just set the poll again after the backoff period
       setTimeout(function () {
-        self.watchForChanges(path, callback);
+        self.watchForChanges(callback);
       }, pollResult.retryAfter);
 
     } else {
-      self.pullChanges(path, callback);
+      self.pullChanges(callback);
     }
 
   });
@@ -105,11 +124,10 @@ DropboxSync.prototype.watchForChanges = function (path, callback) {
 
 /**
  * Pull changes from a dropbox for a particular path
- * @param  {String}   path     Path within the dropbox to get changes for
  * @param  {Function} callback Evaluated with (err, changesMade) after completion
  * @return {DropboxSync}
  */
-DropboxSync.prototype.pullChanges = function (path, callback) {
+DropboxSync.prototype.pullChanges = function (callback) {
   var self = this;
 
   this.client.pullChanges(this.cursor, function (err, pulledChanges) {
@@ -117,11 +135,14 @@ DropboxSync.prototype.pullChanges = function (path, callback) {
 
     self.cursor = pulledChanges;
 
-    pulledChanges.changes = pulledChanges.changes.filter(function (change) {
-      return change.path.slice(0, path.length) === path;
-    });
+    // filter change results if we're filtering that
+    if(self.path) {
+      pulledChanges.changes = pulledChanges.changes.filter(function (change) {
+        return change.path.slice(0, self.path.length) === self.path;
+      });
+    }
 
-    self.commitChanges(path, pulledChanges, callback);
+    self.commitChanges(pulledChanges, callback);
   }); 
 
   return this;
@@ -160,7 +181,7 @@ DropboxSync.prototype.toLocalPath = function (path) {
  * @param  {Function} callback      Evaluated with (err, Dropbox.Http.PulledChanges) on completion
  * @return {DropboxSync}
  */
-DropboxSync.prototype.commitChanges = function(path, pulledChanges, callback) {
+DropboxSync.prototype.commitChanges = function(pulledChanges, callback) {
   var self = this;
   
   async.series([
@@ -177,7 +198,7 @@ DropboxSync.prototype.commitChanges = function(path, pulledChanges, callback) {
     // pull more changes
     function (next) {
       if(pulledChanges.shouldPullAgain) {
-        self.pullChanges(path, next);
+        self.pullChanges(next);
       } else {
         next();
       }
