@@ -1,0 +1,304 @@
+var Dropbox = require('dropbox')
+  , merge = require('merge')
+  , fs = require('fs-extra')
+  , async = require('async')
+  , Path = require('path');
+
+module.exports = DropboxSync;
+
+/**
+ * Create a new DropboxSync instance
+ * @param {Object} dropboxConfig 
+ * @param dropboxConfig {String} key Dropbox API key
+ * @param dropboxConfig {String} secret Dropbox API secret
+ * @param dropboxConfig {String} uid User's Dropbox UID
+ * @param dropboxConfig {String} token User's OAuth Access token
+ * @param {String} path Local path for the user's dropbox
+ */
+function DropboxSync(dropboxConfig, path) {
+  this.client = new Dropbox.Client({
+    key: dropboxConfig.key,
+    secret: dropboxConfig.secret,
+    uid: dropboxConfig.uid,
+    token: dropboxConfig.token
+  });
+
+  this.root = path;
+
+  this.cursor = null;
+}
+
+// convenience method
+/**
+ * Convenience function for keeping a folder in sync
+ * @param  {Object} options  Dropbox Configuration. See DropboxSync
+ * @param  {String} localPath local path for the user's dropbox
+ * @param  {String} syncPath     Folder within the dropbox to limit the sync to (if any)
+ * @param  {function(Error)} onError  Evaluated when an error occurs. If triggered, DropboxSync will not continue to attempt to keep the folder in sync.
+ * @param  {function(Array)} onChange Evaluated every time a change occurs in the dropbox with an array of the modified paths.
+ * @return {DropboxSync}          The DropboxSync instance generated
+ */
+DropboxSync.sync = function (options, localPath, syncPath, onError, onChange) {
+  var dbfs = new DropboxSync(options);
+
+  dbfs.sync(path, onError, onChange);
+
+  return dbfs;
+};
+
+/**
+ * Sync a specific folder to the local path
+ * @param  {String} path     Dropbox folder to sync
+ * @param  {function(error)} onError  Evaluated when an error occurs. If triggered, this instance will not continue to sync.
+ * @param  {function(Array)} onChange Evaluated every time a change occurs in the dropbox with an array of the modified paths.
+ * @return {DropboxSync}
+ */
+DropboxSync.prototype.sync = function (path, onError, onChange) {
+  var self = this;
+
+  this.watchForChanges(path, function (err, changesMade) {
+    if(err) return onError(err);
+
+    // trigger the onChange
+    onChange(changesMade.map(function (change) {
+      return self.toLocalPath(change.path);
+    }));
+
+    // reset
+    self.sync(onError, onChange);
+  });
+
+  return this;
+};
+
+/**
+ * Watch for changes in a Dropbox folder, and commit them when they occur
+ * @param  {String}   path     Dropbox folder to watch for changes in
+ * @param  {Function} callback Evaluated with (err, changesMade) when a change occurs
+ * @return {DropboxSync}
+ */
+DropboxSync.prototype.watchForChanges = function (path, callback) {
+  var self = this;
+
+  if(!this.cursor) {
+    return this.pullChanges(path, callback);
+  }
+
+  this.client.pollForChanges(this.cursor, function (err, pollResult) {
+    if(err) return callback(err);
+
+    if(!pollResult.hasChanges) {
+
+      // if there are no changes, just set the poll again after the backoff period
+      setTimeout(function () {
+        self.watchForChanges(path, callback);
+      }, pollResult.retryAfter);
+
+    } else {
+      self.pullChanges(path, callback);
+    }
+
+  });
+
+  return this;
+};
+
+/**
+ * Pull changes from a dropbox for a particular path
+ * @param  {String}   path     Path within the dropbox to get changes for
+ * @param  {Function} callback Evaluated with (err, changesMade) after completion
+ * @return {DropboxSync}
+ */
+DropboxSync.prototype.pullChanges = function (path, callback) {
+  var self = this;
+
+  this.client.pullChanges(this.cursor, function (err, pulledChanges) {
+    if(err) return callback(err);
+
+    self.cursor = pulledChanges;
+
+    pulledChanges.changes = pulledChanges.changes.filter(function (change) {
+      return change.path.slice(0, path.length) === path;
+    });
+
+    self.commitChanges(path, pulledChanges, callback);
+  }); 
+
+  return this;
+};
+
+/**
+ * Reset the local path to an empty state
+ * @param  {Function} callback Evaluated with (err, firstDirectoryMade) on completion
+ * @return {DropboxSync}
+ */
+DropboxSync.prototype.resetDir = function(callback) {
+  var dir = this.root; // not sure if this should be the thing
+
+  fs.remove(dir, function (err) {
+    if(err) return callback(err);
+
+    fs.mkdirs(dir, callback);
+  });
+
+  return this;
+};
+
+/**
+ * Translate a dropbox path to a local path
+ * @param  {String} path Path within dropbox
+ * @return {String}      Local path equivalent
+ */
+DropboxSync.prototype.toLocalPath = function (path) {
+  return Path.join(this.root, path);
+};
+
+/**
+ * Commit the pulled changes to the local state
+ * @param  {String}   path          Path from which changes are pulled
+ * @param  {Dropbox.Http.PulledChanges}   pulledChanges Changes that need to be commited to the local state
+ * @param  {Function} callback      Evaluated with (err, Dropbox.Http.PulledChanges) on completion
+ * @return {DropboxSync}
+ */
+DropboxSync.prototype.commitChanges = function(path, pulledChanges, callback) {
+  var self = this;
+  
+  async.series([
+
+    // reset directory
+    function (next) {
+      if(pulledChanges.blankSlate) {
+        self.resetDir(next);
+      } else {
+        next();
+      }
+    },
+
+    // pull more changes
+    function (next) {
+      if(pulledChanges.shouldPullAgain) {
+        self.pullChanges(path, next);
+      } else {
+        next();
+      }
+    },
+
+    // make filesystem updates
+    function (next) {
+      async.each(pulledChanges.changes, self.commitChange.bind(self), next);
+    }
+
+  ], function (err) {
+
+    if(err) return callback(err);
+
+    callback(null, pulledChanges);
+  });
+
+  return this;
+};
+
+/**
+ * Commit a single change to the local filesystem.
+ * See https://www.dropbox.com/developers/core/docs#delta
+ * 
+ * @param  {Dropbox.Http.PulledChange}   change   Dropbox change to be commited
+ * @param  {Function} callback Evaluated with (err, somethingRandom)
+ * @return {DropboxSync}
+ */
+DropboxSync.prototype.commitChange = function (change, callback) {
+
+  if(change.wasRemoved) {
+
+    // delete file or folder
+    fs.remove(this.toLocalPath(change.path), callback);
+
+  } else if(change.stat.isFile) {
+
+    this._replaceLocalWithFile(change, callback);
+
+  } else if(change.stat.isFolder) {
+
+    this._replaceLocalWithFolder(change, callback);
+
+  } else {
+
+    // not sure what would fall in here
+    callback(new Error("Unable to commit change."));
+  }
+
+  return this;
+};
+
+/**
+ * Replace a local path with a file from dropbox
+ * @api private
+ * @param  {Dropbox.Http.PulledChange}   change   Dropbox change that requires a file at the path
+ * @param  {Function} callback Evaluated with (err) on completion
+ * @return {null}
+ */
+DropboxSync.prototype._replaceLocalWithFile = function (change, callback) {
+
+  var self = this
+    , localPath = this.toLocalPath(change.path);
+
+  async.parallel({
+
+    // remove local state
+    local: function (next) {
+      fs.remove(localPath, next);
+    },
+
+    // fetch dropbox entry
+    dropbox: function (next) {
+      self.client.readFile(change.path, { buffer: true }, function (err, buffer, stat) {
+        next(err, buffer);
+      });
+    }
+  }, function (err, results) {
+    if(err) return callback(err);
+
+    // add dropbox entry to local state
+    fs.outputFile(localPath, results.dropbox, callback);
+  });
+};
+
+/**
+ * Replace a local path with a folder from dropbox
+ * @api private
+ * @param  {Dropbox.Http.PulledChange}   change   Dropbox change that requires a file at the path
+ * @param  {Function} callback Evaluated with (err, firstFolderMade) on completion
+ * @return {null}
+ */
+DropboxSync.prototype._replaceLocalWithFolder = function (change, callback) {
+
+  var localPath = this.toLocalPath(change.path);
+
+  fs.stat(localPath, function (err, stat) {
+
+    // handle errors
+    if(err) {
+      if(err.code === 'ENOENT') {
+        // local path doesn't exist, create the folder
+        return fs.mkdirs(localPath, callback);
+      } else {
+        // regular error
+        return callback(err);
+      }
+    }
+
+    // already a folder, nothing to see here
+    if(stat.isDirectory) {
+      return callback();
+    }
+
+    // not a folder, remove whatever is there...
+    fs.remove(localPath, function (err) {
+      if(err) return callback(err);
+
+      // ... and replace it with a folder
+      fs.mkdirs(localPath, callback);
+    });
+  });
+
+};

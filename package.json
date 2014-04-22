@@ -1,0 +1,29 @@
+{
+  "name": "dropbox-sync",
+  "version": "0.0.1",
+  "description": "Read-only sync with Dropbox",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git://github.com/treygriffith/dropbox-sync.git"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "dropbox",
+    "sync"
+  ],
+  "author": {
+    "name": "Trey Griffith",
+    "email": "trey@tgriff3.com",
+    "url": "http://tgriff3.com"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "dropbox": "^0.10.2",
+    "merge": "^1.1.3",
+    "fs-extra": "^0.8.1",
+    "async": "^0.7.0"
+  }
+}
