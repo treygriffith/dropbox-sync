@@ -95,7 +95,7 @@ DropboxSync.prototype.watchForChanges = function (callback) {
   var self = this;
 
   if(!this.cursor) {
-    return this.pullChanges(path, callback);
+    return this.pullChanges(callback);
   }
 
   if(this.watchingForChanges) return this;
