@@ -114,10 +114,12 @@ DropboxSync.prototype.watchForChanges = function (callback) {
 
     if(!pollResult.hasChanges) {
 
+      console.log("no changes right now. We'll try again in "+((pollResult.retryAfter || 0) * 1000));
+
       // if there are no changes, just set the poll again after the backoff period
-      setTimeout(function () {
+      delay(pollResult.retryAfter, function () {
         self.watchForChanges(callback);
-      }, pollResult.retryAfter);
+      });
 
     } else {
       self.pullChanges(callback);
@@ -332,3 +334,11 @@ DropboxSync.prototype._replaceLocalWithFolder = function (change, callback) {
   });
 
 };
+
+function delay(seconds, fn) {
+  if(!seconds) {
+    return setImmediate(fn);
+  }
+
+  return setTimeout(fn, seconds * 1000);
+}
