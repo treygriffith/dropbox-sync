@@ -27,6 +27,10 @@ function DropboxSync(dropboxConfig, root, path) {
   this.root = root;
   this.path = path;
 
+  if(this.path[0] !== '/') {
+    this.path = '/' + this.path;
+  }
+
   this.cursor = null;
 
   this.watchingForChanges = null;
@@ -171,6 +175,9 @@ DropboxSync.prototype.resetDir = function(callback) {
  * @return {String}      Local path equivalent
  */
 DropboxSync.prototype.toLocalPath = function (path) {
+  if(path[0] === '/') {
+    path = '.' + path;
+  }
   return Path.join(this.root, path);
 };
 
