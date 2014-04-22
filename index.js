@@ -2,7 +2,8 @@ var Dropbox = require('dropbox')
   , merge = require('merge')
   , fs = require('fs-extra')
   , async = require('async')
-  , Path = require('path');
+  , Path = require('path')
+  , debug = require('debug')('DropboxSync');
 
 module.exports = DropboxSync;
 
@@ -80,13 +81,12 @@ DropboxSync.prototype.sync = function (onError, onChange) {
 
 DropboxSync.prototype.stopSync = function (callback) {
 
-  // abort the outstanding XHR
+  debug('aborting outstanding XHR');
   this.watchingForChanges.abort();
 
-  // change the flag
   this.watchingForChanges = null;
 
-  // reset our local state
+  debug('resetting local state');
   fs.remove(this.root, callback);
 };
 
@@ -104,28 +104,33 @@ DropboxSync.prototype.watchForChanges = function (callback) {
 
   if(this.watchingForChanges) return this;
 
+  debug('watching for changes...');
+
   this.watchingForChanges = this.client.pollForChanges(this.cursor, function (err, pollResult) {
     if(err) return callback(err);
 
-    console.log("Back from poll", pollResult);
+    debug('watch for changes returned.');
 
-    // no longer polling, don't do anything else
     if(!self.watchingForChanges) {
-      console.log("we're not supposed to be watching for changes anymore");
+      debug('no longer watching for changes, returning.');
       return;
     }
 
     if(!pollResult.hasChanges) {
 
-      console.log("no changes right now. We'll try again in "+((pollResult.retryAfter || 0) * 1000));
+      debug('No changes reported. Polling again in ' + ((pollResult.retryAfter || 0) * 1000) + ' seconds.');
 
-      // if there are no changes, just set the poll again after the backoff period
       delay(pollResult.retryAfter, function () {
+
+        // reset watching for changes status
+        self.watchingForChanges = null;
+
         self.watchForChanges(callback);
       });
 
     } else {
-      console.log("got some changes! let's pull those.");
+
+      debug('changes reported, processing...');
 
       self.pullChanges(callback);
     }
@@ -148,13 +153,15 @@ DropboxSync.prototype.pullChanges = function (callback) {
 
     self.cursor = pulledChanges;
 
-    console.log("pulled some changes", pulledChanges);
+    debug(pulledChanges.changes.length + ' changes reported.');
 
     // filter change results if we're filtering that
     if(self.path) {
       pulledChanges.changes = pulledChanges.changes.filter(function (change) {
         return change.path.slice(0, self.path.length) === self.path;
       });
+
+      debug(pulledChanges.changes.length + ' changes remaining after filtering for '+self.path+'.');
     }
 
     self.commitChanges(pulledChanges, callback);
@@ -171,7 +178,7 @@ DropboxSync.prototype.pullChanges = function (callback) {
 DropboxSync.prototype.resetDir = function(callback) {
   var dir = this.root;
 
-  console.log("resetting home directory");
+  debug('resetting root directory: '+dir);
 
   fs.remove(dir, function (err) {
     if(err) return callback(err);
@@ -204,7 +211,7 @@ DropboxSync.prototype.toLocalPath = function (path) {
 DropboxSync.prototype.commitChanges = function(pulledChanges, callback) {
   var self = this;
 
-  console.log("commiting changes", pulledChanges);
+  debug('commiting '+pulledChanges.changes.length+' changes.');
   
   async.series([
 
@@ -220,7 +227,7 @@ DropboxSync.prototype.commitChanges = function(pulledChanges, callback) {
     // pull more changes
     function (next) {
       if(pulledChanges.shouldPullAgain) {
-        console.log("it wants us to pull again... lets do it.");
+        debug('more changes to pull, pulling...');
         self.pullChanges(next);
       } else {
         next();
@@ -252,21 +259,19 @@ DropboxSync.prototype.commitChanges = function(pulledChanges, callback) {
  */
 DropboxSync.prototype.commitChange = function (change, callback) {
 
-  console.log("commiting change");
-
   if(change.wasRemoved) {
-    console.log(change.path + " was deleted.");
+    debug(change.path + " was deleted.");
 
     // delete file or folder
     fs.remove(this.toLocalPath(change.path), callback);
 
   } else if(change.stat.isFile) {
-    console.log(change.path + " is a file.");
+    debug(change.path + " is now a file.");
 
     this._replaceLocalWithFile(change, callback);
 
   } else if(change.stat.isFolder) {
-    console.log(change.path + " is a folder.");
+    debug(change.path + " is now a folder.");
 
     this._replaceLocalWithFolder(change, callback);
 
