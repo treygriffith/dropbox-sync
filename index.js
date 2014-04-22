@@ -122,6 +122,8 @@ DropboxSync.prototype.watchForChanges = function (callback) {
       });
 
     } else {
+      console.log("got some changes! let's pull those.");
+
       self.pullChanges(callback);
     }
 
@@ -143,6 +145,8 @@ DropboxSync.prototype.pullChanges = function (callback) {
 
     self.cursor = pulledChanges;
 
+    console.log("pulled some changes", pulledChanges);
+
     // filter change results if we're filtering that
     if(self.path) {
       pulledChanges.changes = pulledChanges.changes.filter(function (change) {
@@ -162,7 +166,9 @@ DropboxSync.prototype.pullChanges = function (callback) {
  * @return {DropboxSync}
  */
 DropboxSync.prototype.resetDir = function(callback) {
-  var dir = this.root; // not sure if this should be the thing
+  var dir = this.root;
+
+  console.log("resetting home directory");
 
   fs.remove(dir, function (err) {
     if(err) return callback(err);
@@ -194,6 +200,8 @@ DropboxSync.prototype.toLocalPath = function (path) {
  */
 DropboxSync.prototype.commitChanges = function(pulledChanges, callback) {
   var self = this;
+
+  console.log("commiting changes", pulledChanges);
   
   async.series([
 
@@ -209,6 +217,7 @@ DropboxSync.prototype.commitChanges = function(pulledChanges, callback) {
     // pull more changes
     function (next) {
       if(pulledChanges.shouldPullAgain) {
+        console.log("it wants us to pull again... lets do it.");
         self.pullChanges(next);
       } else {
         next();
@@ -240,16 +249,21 @@ DropboxSync.prototype.commitChanges = function(pulledChanges, callback) {
  */
 DropboxSync.prototype.commitChange = function (change, callback) {
 
+  console.log("commiting change");
+
   if(change.wasRemoved) {
+    console.log(change.path + " was deleted.");
 
     // delete file or folder
     fs.remove(this.toLocalPath(change.path), callback);
 
   } else if(change.stat.isFile) {
+    console.log(change.path + " is a file.");
 
     this._replaceLocalWithFile(change, callback);
 
   } else if(change.stat.isFolder) {
+    console.log(change.path + " is a folder.");
 
     this._replaceLocalWithFolder(change, callback);
 
