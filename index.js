@@ -110,7 +110,10 @@ DropboxSync.prototype.watchForChanges = function (callback) {
     console.log("Back from poll", pollResult);
 
     // no longer polling, don't do anything else
-    if(!this.watchingForChanges) return;
+    if(!self.watchingForChanges) {
+      console.log("we're not supposed to be watching for changes anymore");
+      return;
+    }
 
     if(!pollResult.hasChanges) {
 
