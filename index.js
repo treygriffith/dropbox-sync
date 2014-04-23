@@ -116,14 +116,14 @@ DropboxSync.prototype.watchForChanges = function (callback) {
       return;
     }
 
+    // reset watching for changes status
+    self.watchingForChanges = null;
+
     if(!pollResult.hasChanges) {
 
       debug('No changes reported. Polling again in ' + ((pollResult.retryAfter || 0) * 1000) + ' seconds.');
 
       delay(pollResult.retryAfter, function () {
-
-        // reset watching for changes status
-        self.watchingForChanges = null;
 
         self.watchForChanges(callback);
       });
