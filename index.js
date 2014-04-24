@@ -28,7 +28,7 @@ function DropboxSync(dropboxConfig, root, path) {
   this.root = root;
   this.path = path;
 
-  if(this.path[0] !== '/') {
+  if(this.path && this.path[0] !== '/') {
     this.path = '/' + this.path;
   }
 
@@ -176,7 +176,8 @@ DropboxSync.prototype.pullChanges = function (callback) {
  * @return {DropboxSync}
  */
 DropboxSync.prototype.resetDir = function(callback) {
-  var dir = this.root;
+  // slice off the leading slash from path
+  var dir = this.path ? Path.resolve(this.root, this.path.slice(1)) : this.root;
 
   debug('resetting root directory: '+dir);
 
