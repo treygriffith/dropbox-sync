@@ -1,6 +1,6 @@
 {
   "name": "dropbox-sync",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "Read-only sync with Dropbox",
   "main": "index.js",
   "repository": {
