@@ -173,10 +173,16 @@ DropboxSync.prototype.watchForChanges = function () {
 DropboxSync.prototype.pullChanges = function (prevChanges) {
   var self = this;
 
+  if(this.pullingChanges) return;
+
+  this.pullingChanges = true;
+
   this.client.pullChanges(this.cursor, function (err, pulledChanges) {
     if(err) return self.errAll(err);
 
     self.cursor = pulledChanges;
+
+    this.pullingChanges = false;
 
     debug(pulledChanges.changes.length + ' changes reported.');
 
