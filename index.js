@@ -7,6 +7,8 @@ var Dropbox = require('dropbox')
 
 module.exports = DropboxSync;
 
+// todo: reuse instances for the same dropbox
+
 /**
  * Create a new DropboxSync instance
  * @param {Object} dropboxConfig 
@@ -88,8 +90,7 @@ DropboxSync.prototype.stopSync = function (callback) {
 
   this.watchingForChanges = null;
 
-  debug('resetting local state');
-  fs.remove(this.root, callback);
+  this.resetDir(callback);
 };
 
 /**
