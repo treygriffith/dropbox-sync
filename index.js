@@ -184,7 +184,7 @@ DropboxSync.prototype.pullChanges = function (prevChanges) {
 
     self.cursor = pulledChanges;
 
-    this.pullingChanges = false;
+    self.pullingChanges = false;
 
     debug(pulledChanges.changes.length + ' changes reported.');
 
