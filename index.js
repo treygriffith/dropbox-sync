@@ -383,7 +383,17 @@ DropboxSync.prototype.getLocalState = function (path, callback) {
 
   path = path || '.';
 
-  readdir(this.toLocalPath(path), callback);
+  readdir(this.toLocalPath(path), function (err, paths) {
+    if(err) {
+      if(err.code === 'ENOENT') {
+        return callback(null, []);
+      }
+
+      return callback(err);
+    }
+
+    callback(null, paths || []);
+  });
 };
 
 /**
