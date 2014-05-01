@@ -255,11 +255,10 @@ DropboxSync.prototype.pullChanges = function (prevChanges) {
 
 /**
  * Reset the local path to an empty state
- * @param  {String} path Path within the dropbox to reset
  * @param  {Function} callback Evaluated with (err, firstDirectoryMade) on completion
  * @return {DropboxSync}
  */
-DropboxSync.prototype.resetDir = function(path, callback) {
+DropboxSync.prototype.resetDir = function(callback) {
   // slice off the leading slash from path
   var dir = Path.resolve(this.root);
 
