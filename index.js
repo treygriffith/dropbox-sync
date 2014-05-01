@@ -22,7 +22,7 @@ module.exports = DropboxSync;
  */
 function DropboxSync(dropboxConfig, root) {
   if(cache[dropboxConfig.uid + ':' + root]) {
-    return cache[dropboxConfig.uid];
+    return cache[dropboxConfig.uid + ':' + root];
   }
   
   cache[dropboxConfig.uid + ':' + root] = this;
