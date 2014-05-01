@@ -234,6 +234,8 @@ DropboxSync.prototype.pullChanges = function (prevChanges) {
 
         var changedPaths = pulledChanges.changes.filter(function (change) {
           return change.path.slice(0, path.length) === path;
+        }).map(function (change) {
+          return change.path;
         });
 
         debug(changedPaths + ' changes remaining after filtering for '+path+'.');
