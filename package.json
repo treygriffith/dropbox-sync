@@ -1,6 +1,6 @@
 {
   "name": "dropbox-sync",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Read-only sync with Dropbox",
   "main": "index.js",
   "repository": {
@@ -26,6 +26,7 @@
     "fs-extra": "^0.8.1",
     "async": "^0.7.0",
     "debug": "^0.8.0",
-    "clone": "^0.1.11"
+    "clone": "^0.1.11",
+    "recursive-readdir-filter": "0.0.3"
   }
 }
