@@ -93,6 +93,7 @@ DropboxSync.prototype.sync = function (path, onError, onChange) {
     if(err) return onError(err);
 
     if(changesMade.length) {
+      debug('adding changes to '+path+' queue.');
       queue.push(changesMade.map(self.toLocalPath.bind(self)));
     }
   };
@@ -238,7 +239,7 @@ DropboxSync.prototype.pullChanges = function (prevChanges) {
           return change.path;
         });
 
-        debug(changedPaths + ' changes remaining after filtering for '+path+'.');
+        debug(changedPaths.length + ' changes remaining after filtering for '+path+'.');
 
         // trigger our callback for this path
         self.paths[path](null, changedPaths);
