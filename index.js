@@ -79,7 +79,9 @@ DropboxSync.prototype.sync = function (path, onError, onChange) {
 
   var self = this
       // this queue makes sure that we never hit onChange before onChange gets back to us
-    , queue = async.queue(onChange, 1);
+    , queue = async.queue(function (task, cb) {
+      onChange(task.paths, cb);
+    }, 1);
 
   // start watching again after the callback
   queue.drain = function () {
@@ -94,7 +96,7 @@ DropboxSync.prototype.sync = function (path, onError, onChange) {
 
     if(changesMade.length) {
       debug('adding changes to '+path+' queue.');
-      queue.push(changesMade.map(self.toLocalPath.bind(self)));
+      queue.push({ paths: changesMade.map(self.toLocalPath.bind(self)) });
     }
   };
 
