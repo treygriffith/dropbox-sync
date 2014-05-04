@@ -122,12 +122,15 @@ DropboxSync.prototype.stopSync = function (path, callback) {
   delete this.paths[path];
 
   // no paths left to watch for, kill our longpoll
-  if(!Object.keys(this.paths).length && this.watchingForChanges != null) {
+  if(!Object.keys(this.paths).length && this.watchingForChanges) {
 
     debug('aborting outstanding XHR');
     this.watchingForChanges.abort();
 
     this.watchingForChanges = null;
+
+    debug('removing from cache');
+    delete cache[this.client._uid + ':' + this.root];
 
     debug('resetting '+path);
     this.resetDir(callback);
