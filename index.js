@@ -491,5 +491,9 @@ function normalizePath(path) {
     path = '/' + path;
   }
 
+  if(typeof path === 'string') {
+    path = path.toLowerCase();
+  }
+
   return path;
 }
